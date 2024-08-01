@@ -1,0 +1,133 @@
+Prebuilt build tools
+====================
+
+The buildtools in this directory are used to provide specific versions of
+software to aid in the setup and use of a Wind River Linux project.
+
+To make the use of the buildtools, the binaries are automatically
+installed by setup and made available in the project as a script to be
+sourced called: environment-setup-x86_64-wrlinuxsdk-linux
+
+
+Maintenance
+-----------
+This directory is maintained by Wind River Systems, Inc.
+Contact <support@windriver.com> or your support representative for more
+information on submitting changes.
+
+
+Rebuilding of prebuilts
+-----------------------
+
+Current prebuilt build tools is based on Wind River Linux LTS24.
+
+To get started with Wind River Linux LTS24 latest branch WRLINUX_10_24_LTS
+
+$ git clone --branch WRLINUX_10_24_LTS https://github.com/WindRiverLinux24/wrlinux-x
+
+
+Setup a new project, using --machine=qemux86-64
+
+$ wrlinux-x/setup.sh --machines qemux86-64
+
+
+Create a new build directory using oe-init-build-env
+
+$ source oe-init-build-env
+
+
+Build buildtools tarballs
+
+$ bitbake buildtools-tarball &>build.log
+$ bitbake buildtools-extended-tarball &>build-extended.log
+
+
+The generated buildtools files reside in tmp-glibc/deploy/sdk accordingly
+
+<sdkmachine>-buildtools-nativesdk-standalone-<version>.sh
+<sdkmachine>-buildtools-extended-nativesdk-standalone-<version>.sh
+
+SDK manifest files are
+
+<sdkmachine>-buildtools-nativesdk-standalone-<version>.host.manifest
+<sdkmachine>-buildtools-extended-nativesdk-standalone-<version>.host.manifest
+
+
+And use following command to get the sources:
+
+$ bitbake buildtools-tarball --runall=fetch
+
+the sources will be downloaded to ${DL_DIR}.
+
+
+Then construct buildtools git repo, take buildtools-extended-tarball as example
+
+$ BUILDTOOLS=buildtools-extended
+$ ORIG_VERSION=10.24.17.0
+$ VERSION=10.24.17.0
+$ LOGFILE=build-extended.log
+$ BUILDTOOLS_DIR=$BUILDTOOLS-standalone-$VERSION
+$ mkdir $BUILDTOOLS_DIR
+
+Save the build configuration to file config
+
+$ sed -n '/^Build Configuration:/,/^local /p' $LOGFILE >$BUILDTOOLS_DIR/config
+
+Copy the buildtools manifest file
+
+$ cp tmp-glibc/deploy/sdk/x86_64-$BUILDTOOLS-nativesdk-standalone-$ORIG_VERSION.host.manifest \
+     $BUILDTOOLS_DIR/x86_64-$BUILDTOOLS-nativesdk-standalone-$VERSION.host.manifest
+
+
+Backup license files of packages
+
+$ mkdir $BUILDTOOLS_DIR/licenses
+$ while read name arch version; do
+    srpm=$(rpm -qp --queryformat '%{SOURCERPM}\n' tmp-glibc/deploy/rpm/$arch/$name-$version*$arch.rpm)
+    srpm_name=${srpm%%-${version}*}
+
+    if [ -d tmp-glibc/deploy/licenses/$srpm_name ]; then
+        if [ ! -d $BUILDTOOLS_DIR/licenses/$srpm_name ]; then
+            cp -r tmp-glibc/deploy/licenses/$srpm_name $BUILDTOOLS_DIR/licenses/
+        fi
+        if [ ${srpm_name} != ${name} ]; then
+            ln -s $srpm_name $BUILDTOOLS_DIR/licenses/$name
+        fi
+    fi
+done < $BUILDTOOLS_DIR/x86_64-$BUILDTOOLS-nativesdk-standalone-$VERSION.host.manifest
+
+
+The last step is to copy the buildtools file itself.
+
+Since git has a hard threshold that it doesn't accept one file larger than
+100M, we set a soft threshold 50M in WRLinux. Check the buildtools file and
+split it if the size is larger than the threshold, and save files list to a
+.list file with same base name of the buildtools file.
+
+$ bt_file=tmp-glibc/deploy/sdk/x86_64-$BUILDTOOLS-nativesdk-standalone-$ORIG_VERSION.sh
+$ bt_basename=x86_64-$BUILDTOOLS-nativesdk-standalone-$VERSION
+$ bt_size=$(du -m $bt_file | cut -f1)
+$ if [ 50 -lt "$bt_size" ]; then
+    split -b 50M --numeric-suffixes=1 \
+    $bt_file \
+    $BUILDTOOLS_DIR/x86_64-$BUILDTOOLS-nativesdk-standalone-$VERSION.part
+    for part in $BUILDTOOLS_DIR/*part*; do
+        echo ${part##*/} >>$BUILDTOOLS_DIR/$bt_basename.list
+    done
+else
+    cp $bt_file $BUILDTOOLS_DIR/$bt_basename.sh
+fi
+
+For the split buildtools file, use command cat to restore it:
+
+$ cd $BUILDTOOLS_DIR
+$ cat $(cat x86_64-$BUILDTOOLS-nativesdk-standalone-$VERSION.list) \
+      >> x86_64-$BUILDTOOLS-nativesdk-standalone-$VERSION.sh
+$ chmod +x x86_64-$BUILDTOOLS-nativesdk-standalone-$VERSION.sh
+
+
+License
+-------
+
+For license information on components included in the archive, see the
+corresponding nativesdk recipe and source code.
